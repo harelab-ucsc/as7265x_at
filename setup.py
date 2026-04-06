@@ -4,7 +4,7 @@ package_name = 'as7265x_at'
 
 setup(
     name=package_name,
-    version='0.0.1',
+    version='0.1.1',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='mwmaster',
-    maintainer_email='mwmaster@ucsc.edu',
+    maintainer='nubby',
+    maintainer_email='jlee211@ucsc.edu',
     description='Simple driver for Sparkfun AS7265x Spectral Triad Spectrometer',
     license='TODO: License declaration',
     tests_require=['pytest'],
