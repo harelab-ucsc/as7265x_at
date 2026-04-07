@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='nubby',
     maintainer_email='jlee211@ucsc.edu',
-    description='Simple driver for Sparkfun AS7265x Spectral Triad Spectrometer',
+    description='Simple driver for Sparkfun AS7265x Spectral Triad spectroscopy sensor',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
