@@ -35,30 +35,32 @@ Description:
         E   ->  510nm
         F   ->  535nm
 
-Author:
-    Slugraculture
-    Morgan Masters
-    nubby
-
 Date:
     8 Apr 2026
 
 Version:
     0.1.2
 """
+# ROS2 node imports.
 import rclpy
+from rclpy.node import Node
+
+# ROS2 messages.
+from builtin_interfaces.msg import Time as BuiltinTime
+from sensor_msgs.msg import Temperature
+from std_msgs.msg import String, Header
+
+# Module-level ROS2 messages.
+from as7265x_at_msgs.msg import AS7265xRaw, AS7265xCal
+
+# Standard imports.
 import re
 import serial
 import threading
 import time
 
-from rclpy.node import Node
-from sensor_msgs.msg import Temperature
-from std_msgs.msg import String, Header
 
-from as7265x_at_msgs.msg import AS7265xRaw, AS7265xCal
-
-
+# Global definitions.
 # TODO: Make port selection intelligent.
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 115200
@@ -77,28 +79,45 @@ class AS7265xStreamNode(Node):
                 Each sensor element is pre-calibrated using diffused,
                 incandescent light as specified in the AS7265x datasheet. The
                 calibration settings are as follows:
-                    * GAIN  = 16x
-                    * INT_T = 166ms
+                    * GAIN  = 16x       (0b10)
+                    * INT_T = 166ms     (0x3B)
                     * VDD   = 3.3V
                     * T_AMB = 25ºC
-                These settings are set as the default configuration for this
-                node.
+                - Gain can be adjusted by setting the [5:4] bits of the
+                    configuration register (0x04) with the following:
+                        * 0b00  = 1x
+                        * 0b01  = 3.7x  [default]
+                        * 0b10  = 16x   [calibration]
+                        * 0b11  = 64x
+                - Integration time for all channels can be adjusted by setting
+                    the full integration time register (0x05) with a conversion
+                    of:
+                        <integration_time> = <value+1> * 2.78ms
+                    Calibration was done with integration time of 166ms = 0x3B. 
         """
         super().__init__('as7265x_stream')
 
-        # Device configurations.
+        # ----------------------------
+        # Parameters.
+        # ----------------------------
         self.declare_parameter('serial_port', DEFAULT_PORT)
         self.declare_parameter('baudrate', DEFAULT_BAUD)
-        self.declare_parameter('integration_time', 20)  # ~2.8ms increments
-        self.declare_parameter('gain', 1)               # 0–3
+        self.declare_parameter('integration_time', time_int_ms)
+        self.declare_parameter('gain', gain)
         self.declare_parameter('interval', 1)           # 1–255
         self.declare_parameter('calibrated', True)      # True -> ATCDATA mode
+        self.declare_parameter('pps_topic', '/pps/time')
+        self.pps_topic = self.get_parameter('pps_topic').value
 
+        # ----------------------------
         # Serial connection settings.
+        # ----------------------------
         port = self.get_parameter('serial_port').value
         baud = int(self.get_parameter('baudrate').value)
 
-        # ROS publishers.
+        # ----------------------------
+        # Publishers.
+        # ----------------------------
         self.pub_raw = self.create_publisher(
                 AS7265xRaw, 
                 'as7265x/raw_values',
@@ -116,7 +135,23 @@ class AS7265xStreamNode(Node):
             )
         self.pub_debug = self.create_publisher(String, 'as7265x/at_raw', 10)
 
+        # ----------------------------
+        # PPS subscriber
+        # ----------------------------
+        self.latest_pps_stamp = None
+        self.pps_lock = threading.Lock()
+        self.warned_no_pps = False
+
+        self.create_subscription(
+            BuiltinTime,
+            self.pps_topic,
+            self.pps_cb,
+            10
+        )
+
+        # ----------------------------
         # Serial link.
+        # ----------------------------
         try:
             self.ser = serial.Serial(port, baud, timeout=READ_TIMEOUT)
             self.get_logger().info(f"Opened {port} @ {baud}")
@@ -132,10 +167,24 @@ class AS7265xStreamNode(Node):
 
         # Start background reader thread.
         self.reader_thread = threading.Thread(
-                target=self.read_loop,
-                daemon=True
-            )
+            target=self.read_loop,
+            daemon=True
+        )
         self.reader_thread.start()
+
+        self.get_logger().info(
+            f"AS7265xStreamNode running. Using PPS topic: {self.pps_topic}"
+        )
+
+    def pps_cb(self, msg: BuiltinTime):
+        """
+        PPS callback.
+
+        Args:
+            msg (BuiltinTime)
+        """
+        with self.pps_lock:
+            self.latest_pps_stamp = msg
 
     def configure_device(self):
         """
@@ -152,11 +201,13 @@ class AS7265xStreamNode(Node):
         resp = []
 
         # Integration time.
+        # TODO: Convert human-readable integration time to machine.
         it = int(self.get_parameter('integration_time').value)
         self.send(f"ATINTTIME={it}")
         resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
 
         # Gain.
+        # TODO: Convert human-readable gain param to machine.
         g = int(self.get_parameter('gain').value)
         self.send(f"ATGAIN={g}")
         resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
@@ -169,20 +220,19 @@ class AS7265xStreamNode(Node):
         # Enable continuous burst mode.
         #   mode = 0 -> Raw data returned as int32s.
         #   mode = 1 -> Cal values returned as floats.
-        mode = 1 if self.get_parameter('calibrated').value else 0
+        mode = 1 if bool(self.get_parameter('calibrated').value) else 0
         self.send(f"ATBURST=255,{mode}")
         resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
 
-        # self.get_logger().info(resp)
         # Confirm that all responses are 'OK'; otherwise, kill node.
         if all('OK\n' in r for r in resp):
             self.get_logger().info(
-                    "AS7265x is now streaming continuously (burst mode 255)."
-                )
+                "AS7265x is now streaming continuously (burst mode 255)."
+            )
         else:
             self.get_logger().info(
-                    "AS7265x configuration failure. Killing node."
-                )
+                "AS7265x configuration failure. Killing node."
+            )
             self.destroy_node()
 
     def send(self, cmd: str):
@@ -196,6 +246,28 @@ class AS7265xStreamNode(Node):
             self.ser.write((cmd + "\r\n").encode('utf-8'))
         except Exception as e:
             self.get_logger().error(f"Write error: {e}")
+
+    def get_best_stamp(self) -> BuiltinTime:
+        """
+        Stamp helper.
+
+        Returns:
+            ts  (BuiltinTime)   PPS if available, else node time.
+        """
+        # Get the most recent and available PPS timestamp.
+        with self.pps_lock:
+            pps_stamp = self.latest_pps_stamp
+
+        if pps_stamp is None:
+            if not self.warned_no_pps:
+                self.get_logger().warn(
+                    f"No PPS timestamp received on {self.pps_topic} yet; "
+                    f"using node clock time."
+                )
+                self.warned_no_pps = True
+            return self.get_clock().now().to_msg()
+
+        return pps_stamp
 
     def read_loop(self):
         """
@@ -243,13 +315,8 @@ class AS7265xStreamNode(Node):
                     if not raw:
                         continue
 
-                    # Decode safely.
-                    try:
-                        line = raw.decode('utf-8', errors='replace').strip()
-                    except Exception as e:
-                        self.get_logger().warn(f"Decode error: {e}")
-                        continue
-
+                    # Decode and process full line.
+                    line = raw.decode('utf-8', errors='replace').strip()
                     if line:
                         self.handle_line(line)
 
@@ -265,16 +332,21 @@ class AS7265xStreamNode(Node):
         Args:
             line    (str)
         """
-        # Debug publisher for all messages.
+        # Debug publisher for raw AT line.
         dbg = String()
         dbg.data = line
         self.pub_debug.publish(dbg)
+
+        # Remove 'data' prefix before moving on.
+        line = line.strip()
+        if line.lower().startswith("data:"):
+            line = line.split(":", 1)[1].strip()
 
         # Parse comma values: raw (ints) or calibrated (floats).
         if "," in line:
             parts = [p.strip() for p in line.split(",")]
 
-            # --- Temperature format:
+            # Temperature format:
             #   [Header header,
             #    double temperature,
             #    double variance]
@@ -285,43 +357,49 @@ class AS7265xStreamNode(Node):
                 tmsg = Temperature()
                 tmsg.temperature = sum(temps) / len(temps)
                 tmsg.variance = 0.0
+                # Set message header with timestamp.
+                tmsg.header.stamp = self.get_best_stamp()
+                tmsg.header.frame_id = "as7265x"
                 self.pub_temp.publish(tmsg)
                 return
 
-            elif len(parts) >= 18:
-                calibrated = self.get_parameter('calibrated').value
+            # TODO: Verify this.
+            # Spectral payload  message accepts 12+ values (some firmwares
+            #   output 14, others 18).
+            elif len(parts) >= 12:
+                calibrated = self.get_parameter("calibrated").value
 
                 # --- Calibrated format: float[18]
                 if calibrated:
                     pub = self.pub_cal
                     m = AS7265xCal()
-                    data = [float(p) for p in parts]
+                    try:
+                        data = [float(p) for p in parts]
+                    except ValueError:
+                        return
                 # --- Raw format: int32[18] 
                 else:
                     pub = self.pub_raw
                     m = AS7265xRaw()
-                    data = [int(p) for p in parts]
+                    try:
+                        data = [int(float(p)) for p in parts]
+                    except ValueError:
+                        return
 
-                try:
-                    header = Header()
-                    header.stamp = self.get_clock().now().to_msg()
-                    header.frame_id = "as7265x"
+                header = Header()
+                header.stamp = self.get_best_stamp()
+                header.frame_id = "as7265x"
 
-                    m.header = header
-                    m.values = data
-                    pub.publish(m)
-                    return
-                except Exception as e:
-                    self.get_logger().info(e)
-                    pass
+                m.header = header
+                m.values = data
+                pub.publish(m)
+                return
 
-        elif line == "OK":
-            # self.get_logger().info(line)
+        if line == "OK":
             return
 
-        else:
-            self.get_logger().info(f'Unexpected line recieved: \n    {line}')
-            return
+        # Anything else
+        self.get_logger().info(f"Unexpected line received:\n    {line}")
 
     def destroy_node(self):
         """
@@ -330,12 +408,18 @@ class AS7265xStreamNode(Node):
         3. Close serial connection.
         4. Delete this node.
         """
-        self.send(f"ATBURST=0")
+        try:
+            self.send(f"ATBURST=0")
+        except Exception:
+            pass
+
         self.stop_evt.set()
+
         try:
             self.ser.close()
         except:
             pass
+
         super().destroy_node()
 
 
@@ -348,8 +432,9 @@ def main(args=None):
         args.time_int_ms    (optional; int) Integration time in ms; defaults
                                             to 166.
     """
-
     rclpy.init(args=args)
+
+    # Arg parsing.
     try:
         gain = args.gain
     except:
@@ -358,11 +443,14 @@ def main(args=None):
         time_int_ms = args.time_int_ms
     except:
         time_int_ms = 166
+
+    # Spooling up node.
     node = AS7265xStreamNode(gain=gain, time_int_ms=time_int_ms)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    # Idiomatic destruction.
     finally:
         node.destroy_node()
         rclpy.shutdown()
