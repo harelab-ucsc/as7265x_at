@@ -41,10 +41,10 @@ Author:
     nubby
 
 Date:
-    6 Apr 2026
+    8 Apr 2026
 
 Version:
-    0.1.1
+    0.1.2
 """
 import rclpy
 import re
@@ -66,7 +66,24 @@ READ_TIMEOUT = 0.1
 
 
 class AS7265xStreamNode(Node):
-    def __init__(self):
+    def __init__(
+            self,
+            gain: int = 16,
+            time_int_ms: int = 166
+        ):
+        """
+        Description:
+            Calibration information:
+                Each sensor element is pre-calibrated using diffused,
+                incandescent light as specified in the AS7265x datasheet. The
+                calibration settings are as follows:
+                    * GAIN  = 16x
+                    * INT_T = 166ms
+                    * VDD   = 3.3V
+                    * T_AMB = 25ºC
+                These settings are set as the default configuration for this
+                node.
+        """
         super().__init__('as7265x_stream')
 
         # Device configurations.
@@ -150,8 +167,8 @@ class AS7265xStreamNode(Node):
         resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
 
         # Enable continuous burst mode.
-        #   mode = 0 -> Raw data returned as [].
-        #   mode = 1 -> Cal values returned as [float32, float32, float32][6].
+        #   mode = 0 -> Raw data returned as int32s.
+        #   mode = 1 -> Cal values returned as floats.
         mode = 1 if self.get_parameter('calibrated').value else 0
         self.send(f"ATBURST=255,{mode}")
         resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
@@ -323,8 +340,25 @@ class AS7265xStreamNode(Node):
 
 
 def main(args=None):
+    """
+    Launch node.
+
+    Args:
+        args.gain           (optional; int) Sensor gain; defaults to 16.
+        args.time_int_ms    (optional; int) Integration time in ms; defaults
+                                            to 166.
+    """
+
     rclpy.init(args=args)
-    node = AS7265xStreamNode()
+    try:
+        gain = args.gain
+    except:
+        gain = 16
+    try:
+        time_int_ms = args.time_int_ms
+    except:
+        time_int_ms = 166
+    node = AS7265xStreamNode(gain=gain, time_int_ms=time_int_ms)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
