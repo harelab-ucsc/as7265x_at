@@ -6,10 +6,10 @@ from sensor_msgs.msg import Image
 
 class StampAndSplit(Node):
     """
-    Simple version:
-      - subscribes to a camera image topic
-      - if the header timestamp is 0, sets it to node time
-      - republishes the same frame on 4 topics
+    Simple image stamper and splitter.
+
+    Subscribes to a camera image topic, sets the header timestamp to
+    node time if it is zero, and republishes the same frame on 4 topics.
     """
 
     def __init__(self):

@@ -12,12 +12,12 @@ import re
 
 class PpsStampAndSplit(Node):
     """
-    PPS-aware version:
-      - runs `sudo ppstest /dev/pps0` in a background thread
-      - parses PPS timestamps and stores the latest one
-      - subscribes to /camera/image_raw
-      - stamps each frame with latest PPS time (or node time as fallback)
-      - republishes on 4 topics
+    PPS-aware image stamper and splitter.
+
+    Runs ``sudo ppstest /dev/pps0`` in a background thread, parses PPS
+    timestamps, subscribes to /camera/image_raw, stamps each frame with
+    the latest PPS time (or node time as fallback), and republishes on
+    4 topics.
     """
 
     def __init__(self):
@@ -66,7 +66,9 @@ class PpsStampAndSplit(Node):
     # ---- PPS reader thread ----
     def _pps_reader_thread(self):
         """
-        Runs `sudo ppstest /dev/pps0` and parses lines like:
+        Run ``sudo ppstest /dev/pps0`` and parse PPS timestamps.
+
+        Parses lines like:
           source 0 - assert 1700000000.123456789, sequence: 1234 - clear ...
         """
         cmd = ['sudo', 'ppstest', '/dev/pps0']

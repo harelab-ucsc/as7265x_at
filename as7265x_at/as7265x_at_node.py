@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-AS7265x continuous streaming ROS 2 node
-Option A: Hardware-driven burst mode (ATBURST=255)
+AS7265x continuous streaming ROS 2 node.
+
+Option A: Hardware-driven burst mode (ATBURST=255).
 Publishes incoming spectral data automatically.
 """
 
@@ -19,6 +20,7 @@ import re
 DEFAULT_PORT = "/dev/ttyUSB0"
 DEFAULT_BAUD = 115200
 READ_TIMEOUT = 0.1
+
 
 class AS7265xStreamNode(Node):
     def __init__(self):
@@ -58,7 +60,6 @@ class AS7265xStreamNode(Node):
         # Start background reader
         self.reader_thread = threading.Thread(target=self.read_loop, daemon=True)
         self.reader_thread.start()
-
 
     def configure_device(self):
         resp = []
@@ -102,8 +103,9 @@ class AS7265xStreamNode(Node):
     # Background serial reader
     # ---------------------------------------------------------
     def read_loop(self):
-        """
-        Robust serial reader that:
+        r"""
+        Robust serial reader.
+
         - handles partial reads
         - handles None returns from serial.read()
         - safely buffers until newline
@@ -211,13 +213,12 @@ class AS7265xStreamNode(Node):
             self.get_logger().info(f'Unexpected line recieved: \n    {line}')
             return
 
-
     def destroy_node(self):
-        self.send(f"ATBURST=0")
+        self.send("ATBURST=0")
         self.stop_evt.set()
         try:
             self.ser.close()
-        except:
+        except Exception:
             pass
         super().destroy_node()
 
