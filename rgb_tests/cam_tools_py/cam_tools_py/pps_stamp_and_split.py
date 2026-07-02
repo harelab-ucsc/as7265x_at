@@ -21,16 +21,18 @@ class PpsStampAndSplit(Node):
     """
 
     def __init__(self):
-        super().__init__('pps_stamp_and_split')
+        super().__init__("pps_stamp_and_split")
 
         # Parameters
-        self.in_topic = self.declare_parameter(
-            'in_topic', '/camera/image_raw'
-        ).get_parameter_value().string_value
+        self.in_topic = (
+            self.declare_parameter("in_topic", "/camera/image_raw")
+            .get_parameter_value()
+            .string_value
+        )
 
-        depth = self.declare_parameter(
-            'qos_depth', 10
-        ).get_parameter_value().integer_value
+        depth = (
+            self.declare_parameter("qos_depth", 10).get_parameter_value().integer_value
+        )
 
         # Latest PPS timestamp
         self.latest_pps_stamp = None
@@ -39,25 +41,19 @@ class PpsStampAndSplit(Node):
 
         # Start PPS reader thread
         self.get_logger().info("Starting PPS reader thread (ppstest /dev/pps0)...")
-        self.pps_thread = threading.Thread(
-            target=self._pps_reader_thread,
-            daemon=True
-        )
+        self.pps_thread = threading.Thread(target=self._pps_reader_thread, daemon=True)
         self.pps_thread.start()
 
         # Camera subscriber
         self.sub = self.create_subscription(
-            Image,
-            self.in_topic,
-            self.cam_callback,
-            depth
+            Image, self.in_topic, self.cam_callback, depth
         )
 
         # Publishers (4 outputs)
-        self.pub_main = self.create_publisher(Image, '/image_raw_stamped', depth)
-        self.pub_1 = self.create_publisher(Image, '/image_copy_1', depth)
-        self.pub_2 = self.create_publisher(Image, '/image_copy_2', depth)
-        self.pub_3 = self.create_publisher(Image, '/image_copy_3', depth)
+        self.pub_main = self.create_publisher(Image, "/image_raw_stamped", depth)
+        self.pub_1 = self.create_publisher(Image, "/image_copy_1", depth)
+        self.pub_2 = self.create_publisher(Image, "/image_copy_2", depth)
+        self.pub_3 = self.create_publisher(Image, "/image_copy_3", depth)
 
         self.get_logger().info(
             f"PpsStampAndSplit node running. Subscribing to {self.in_topic}"
@@ -71,21 +67,21 @@ class PpsStampAndSplit(Node):
         Parses lines like:
           source 0 - assert 1700000000.123456789, sequence: 1234 - clear ...
         """
-        cmd = ['sudo', 'ppstest', '/dev/pps0']
+        cmd = ["sudo", "ppstest", "/dev/pps0"]
         try:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
             )
         except Exception as e:
             self.get_logger().error(f"Failed to start ppstest: {e}")
             return
 
         # Regex to find the 'assert <sec>.<nsec>' portion
-        assert_re = re.compile(r'assert\s+(\d+)\.(\d+)')
+        assert_re = re.compile(r"assert\s+(\d+)\.(\d+)")
 
         for line in proc.stdout:
             line = line.strip()
@@ -102,7 +98,7 @@ class PpsStampAndSplit(Node):
             try:
                 sec = int(sec_str)
                 # Normalize nanoseconds to 9 digits
-                nsec_str = (nsec_str + '0' * 9)[:9]
+                nsec_str = (nsec_str + "0" * 9)[:9]
                 nsec = int(nsec_str)
             except ValueError:
                 continue
@@ -148,5 +144,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

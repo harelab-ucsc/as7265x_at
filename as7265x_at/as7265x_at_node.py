@@ -24,24 +24,26 @@ READ_TIMEOUT = 0.1
 
 class AS7265xStreamNode(Node):
     def __init__(self):
-        super().__init__('as7265x_stream')
+        super().__init__("as7265x_stream")
 
         # Parameters
-        self.declare_parameter('serial_port', DEFAULT_PORT)
-        self.declare_parameter('baudrate', DEFAULT_BAUD)
-        self.declare_parameter('integration_time', 20)  # ~2.8ms increments
-        self.declare_parameter('gain', 1)               # 0–3
-        self.declare_parameter('interval', 1)           # 1–255
-        self.declare_parameter('calibrated', True)      # True → ATCDATA mode
+        self.declare_parameter("serial_port", DEFAULT_PORT)
+        self.declare_parameter("baudrate", DEFAULT_BAUD)
+        self.declare_parameter("integration_time", 20)  # ~2.8ms increments
+        self.declare_parameter("gain", 1)  # 0–3
+        self.declare_parameter("interval", 1)  # 1–255
+        self.declare_parameter("calibrated", True)  # True → ATCDATA mode
 
-        port = self.get_parameter('serial_port').value
-        baud = int(self.get_parameter('baudrate').value)
+        port = self.get_parameter("serial_port").value
+        baud = int(self.get_parameter("baudrate").value)
 
         # Publishers
-        self.pub_raw = self.create_publisher(AS7265xRaw, 'as7265x/raw_values', 10)
-        self.pub_cal = self.create_publisher(AS7265xCal, 'as7265x/calibrated_values', 10)
-        self.pub_temp = self.create_publisher(Temperature, 'as7265x/temperature', 10)
-        self.pub_debug = self.create_publisher(String, 'as7265x/at_raw', 10)
+        self.pub_raw = self.create_publisher(AS7265xRaw, "as7265x/raw_values", 10)
+        self.pub_cal = self.create_publisher(
+            AS7265xCal, "as7265x/calibrated_values", 10
+        )
+        self.pub_temp = self.create_publisher(Temperature, "as7265x/temperature", 10)
+        self.pub_debug = self.create_publisher(String, "as7265x/at_raw", 10)
 
         # Serial link
         try:
@@ -64,28 +66,30 @@ class AS7265xStreamNode(Node):
     def configure_device(self):
         resp = []
         # Integration time
-        it = int(self.get_parameter('integration_time').value)
+        it = int(self.get_parameter("integration_time").value)
         self.send(f"ATINTTIME={it}")
-        resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
+        resp.append(self.ser.read(256).decode("utf-8", errors="replace"))
 
         # Gain
-        g = int(self.get_parameter('gain').value)
+        g = int(self.get_parameter("gain").value)
         self.send(f"ATGAIN={g}")
-        resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
+        resp.append(self.ser.read(256).decode("utf-8", errors="replace"))
 
         # Sampling interval multiplier
-        iv = int(self.get_parameter('interval').value)
+        iv = int(self.get_parameter("interval").value)
         self.send(f"ATINTRVL={iv}")
-        resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
+        resp.append(self.ser.read(256).decode("utf-8", errors="replace"))
 
         # Enable continuous burst mode
-        mode = 1 if self.get_parameter('calibrated').value else 0
+        mode = 1 if self.get_parameter("calibrated").value else 0
         self.send(f"ATBURST=255,{mode}")
-        resp.append(self.ser.read(256).decode('utf-8', errors='replace'))
+        resp.append(self.ser.read(256).decode("utf-8", errors="replace"))
 
         # self.get_logger().info(resp)
-        if all('OK\n' in r for r in resp):
-            self.get_logger().info("AS7265x is now streaming continuously (burst mode 255).")
+        if all("OK\n" in r for r in resp):
+            self.get_logger().info(
+                "AS7265x is now streaming continuously (burst mode 255)."
+            )
         else:
             self.get_logger().info("AS7265x configuration failure. Killing node.")
             self.destroy_node()
@@ -95,7 +99,7 @@ class AS7265xStreamNode(Node):
     # ---------------------------------------------------------
     def send(self, cmd: str):
         try:
-            self.ser.write((cmd + "\r\n").encode('utf-8'))
+            self.ser.write((cmd + "\r\n").encode("utf-8"))
         except Exception as e:
             self.get_logger().error(f"Write error: {e}")
 
@@ -133,20 +137,20 @@ class AS7265xStreamNode(Node):
 
                 # Process complete lines
                 while True:
-                    nl = buf.find(b'\n')
+                    nl = buf.find(b"\n")
                     if nl == -1:
                         break  # no complete line yet
 
                     # Extract line (strip CR and whitespace)
-                    raw = buf[:nl].rstrip(b'\r')
-                    del buf[:nl+1]  # remove line including newline
+                    raw = buf[:nl].rstrip(b"\r")
+                    del buf[: nl + 1]  # remove line including newline
 
                     if not raw:
                         continue
 
                     # Decode safely
                     try:
-                        line = raw.decode('utf-8', errors='replace').strip()
+                        line = raw.decode("utf-8", errors="replace").strip()
                     except Exception as e:
                         self.get_logger().warn(f"Decode error: {e}")
                         continue
@@ -172,7 +176,7 @@ class AS7265xStreamNode(Node):
             parts = [p.strip() for p in line.split(",")]
 
             # --- Temperature format: A,B,C ---
-            if len(parts) == 3 and all(re.match(r'^-?\d+(\.\d+)?$', p) for p in parts):
+            if len(parts) == 3 and all(re.match(r"^-?\d+(\.\d+)?$", p) for p in parts):
                 temps = [float(x) for x in parts]
                 tmsg = Temperature()
                 tmsg.temperature = sum(temps) / len(temps)
@@ -181,7 +185,7 @@ class AS7265xStreamNode(Node):
                 return
 
             elif len(parts) >= 18:
-                calibrated = self.get_parameter('calibrated').value
+                calibrated = self.get_parameter("calibrated").value
 
                 if calibrated:
                     pub = self.pub_cal
@@ -210,7 +214,7 @@ class AS7265xStreamNode(Node):
             return
 
         else:
-            self.get_logger().info(f'Unexpected line recieved: \n    {line}')
+            self.get_logger().info(f"Unexpected line recieved: \n    {line}")
             return
 
     def destroy_node(self):

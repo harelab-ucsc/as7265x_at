@@ -13,30 +13,29 @@ class StampAndSplit(Node):
     """
 
     def __init__(self):
-        super().__init__('stamp_and_split')
+        super().__init__("stamp_and_split")
 
         # Parameters
-        self.in_topic = self.declare_parameter(
-            'in_topic', '/camera/image_raw'
-        ).get_parameter_value().string_value
+        self.in_topic = (
+            self.declare_parameter("in_topic", "/camera/image_raw")
+            .get_parameter_value()
+            .string_value
+        )
 
-        depth = self.declare_parameter(
-            'qos_depth', 10
-        ).get_parameter_value().integer_value
+        depth = (
+            self.declare_parameter("qos_depth", 10).get_parameter_value().integer_value
+        )
 
         # Subscriber
         self.sub = self.create_subscription(
-            Image,
-            self.in_topic,
-            self.cam_callback,
-            depth
+            Image, self.in_topic, self.cam_callback, depth
         )
 
         # Publishers (4 outputs)
-        self.pub_main = self.create_publisher(Image, '/image_raw_stamped', depth)
-        self.pub_1 = self.create_publisher(Image, '/image_copy_1', depth)
-        self.pub_2 = self.create_publisher(Image, '/image_copy_2', depth)
-        self.pub_3 = self.create_publisher(Image, '/image_copy_3', depth)
+        self.pub_main = self.create_publisher(Image, "/image_raw_stamped", depth)
+        self.pub_1 = self.create_publisher(Image, "/image_copy_1", depth)
+        self.pub_2 = self.create_publisher(Image, "/image_copy_2", depth)
+        self.pub_3 = self.create_publisher(Image, "/image_copy_3", depth)
 
         self.get_logger().info(
             f"StampAndSplit node started. Subscribing to {self.in_topic}"
@@ -62,5 +61,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
