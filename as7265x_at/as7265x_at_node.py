@@ -17,7 +17,7 @@ import threading
 import time
 import re
 
-DEFAULT_PORT = "/dev/ttyUSB0"
+DEFAULT_PORT = "/dev/devAS7265x"
 DEFAULT_BAUD = 115200
 READ_TIMEOUT = 0.1
 
